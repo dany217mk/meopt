@@ -8,4 +8,5 @@
 
 ---
 
-<a href="">Ссылка на отчет</a><br>
+<a href="https://drive.google.com/file/d/1LPWRqlwu9d5Xmq_4HhDEG8fDs_glGYm9/view?usp=sharing">Ссылка на отчет</a><br>
+<a href="https://drive.google.com/file/d/1LPWRqlwu9d5Xmq_4HhDEG8fDs_glGYm9/view?usp=sharing">Ссылка на подкаст</a><br>
