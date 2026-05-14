@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1 class="h4 mb-3">Рабочее место группы</h1>
+
+  <div class="mb-4" id="active-container">
+    {% if active_request %}
+      <div class="card shadow-sm" id="active-card" data-request-id="{{ active_request.id }}">
+        <div class="card-body">
+          <h2 class="h5">Текущая заявка #{{ active_request.id }}</h2>
+          <p class="mb-1"><strong>Адрес:</strong> {{ active_request.address }}</p>
+          <p class="mb-1"><strong>Описание:</strong> {{ active_request.description }}</p>
+          <p class="mb-3">
+            <strong>Статус:</strong>
+            <span id="active-status">{{ active_request.get_status_display }}</span>
+          </p>
+          {% if active_request.status == 'accepted' %}
+            <button
+              class="btn btn-primary"
+              data-action="status"
+              data-url="{% url 'team_request_status' active_request.id %}"
+              data-next-status="en_route"
+            >
+              В пути
+            </button>
+          {% elif active_request.status == 'en_route' %}
+            <button
+              class="btn btn-success"
+              data-action="status"
+              data-url="{% url 'team_request_status' active_request.id %}"
+              data-next-status="completed"
+            >
+              Выполнена
+            </button>
+          {% endif %}
+        </div>
+      </div>
+    {% else %}
+      <div class="alert alert-info" id="active-empty">Активной заявки нет.</div>
+    {% endif %}
+  </div>
+
+  <h2 class="h5">Новые заявки</h2>
+  {% if new_requests %}
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Адрес</th>
+            <th>Описание</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="new-requests-body">
+          {% for req in new_requests %}
+            <tr id="new-request-{{ req.id }}">
+              <td>#{{ req.id }}</td>
+              <td>{{ req.address }}</td>
+              <td>{{ req.description }}</td>
+              <td>
+                <button
+                  class="btn btn-outline-primary btn-sm"
+                  data-action="accept"
+                  data-url="{% url 'team_request_accept' req.id %}"
+                  data-request-id="{{ req.id }}"
+                >
+                  Принять
+                </button>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-secondary">Новых заявок пока нет.</div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    function renderActiveRequest(requestData) {
+      const container = document.getElementById('active-container');
+      container.innerHTML = `
+        <div class="card shadow-sm" id="active-card" data-request-id="${requestData.id}">
+          <div class="card-body">
+            <h2 class="h5">Текущая заявка #${requestData.id}</h2>
+            <p class="mb-1"><strong>Адрес:</strong> ${requestData.address}</p>
+            <p class="mb-1"><strong>Описание:</strong> ${requestData.description}</p>
+            <p class="mb-3"><strong>Статус:</strong> <span id="active-status">${requestData.status_display}</span></p>
+            <button
+              class="btn btn-primary"
+              data-action="status"
+              data-url="/team/request/${requestData.id}/status/"
+              data-next-status="en_route"
+            >
+              В пути
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    document.addEventListener('click', (event) => {
+      const acceptButton = event.target.closest('[data-action="accept"]');
+      if (acceptButton) {
+        const url = acceptButton.dataset.url;
+        postForm(url, {}).then((response) => response.json()).then((data) => {
+          if (!data.ok) {
+            alert(data.error || 'Ошибка принятия заявки.');
+            return;
+          }
+          const row = document.getElementById(`new-request-${acceptButton.dataset.requestId}`);
+          if (row) {
+            row.remove();
+          }
+          if (data.active_request) {
+            renderActiveRequest(data.active_request);
+          }
+        });
+        return;
+      }
+
+      const statusButton = event.target.closest('[data-action="status"]');
+      if (!statusButton) return;
+      const url = statusButton.dataset.url;
+      const nextStatus = statusButton.dataset.nextStatus;
+      postForm(url, { status: nextStatus }).then((response) => response.json()).then((data) => {
+        if (!data.ok) {
+          alert(data.error || 'Ошибка смены статуса.');
+          return;
+        }
+        const statusEl = document.getElementById('active-status');
+        if (statusEl) {
+          statusEl.textContent = data.status_display;
+        }
+        if (data.completed) {
+          document.getElementById('active-container').innerHTML =
+            '<div class="alert alert-info" id="active-empty">Активной заявки нет.</div>';
+        } else {
+          statusButton.textContent = data.status === 'en_route' ? 'Выполнена' : 'В пути';
+          statusButton.classList.toggle('btn-primary', data.status !== 'en_route');
+          statusButton.classList.toggle('btn-success', data.status === 'en_route');
+          statusButton.dataset.nextStatus = data.status === 'en_route' ? 'completed' : 'en_route';
+        }
+      });
+    });
+  </script>
+{% endblock %}

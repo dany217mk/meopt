@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+develop-eggs/
+downloads/
+eggs/
+parts/
+sdist/
+var/
+wheels/
+*.whl
+
+# Django
+*.log
+*.pot
+*.pyc
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/media/
+/staticfiles/
+/static/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+.env
+.env.local
+.env.*.local
+
+# Testing
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Migrations (раскомментируйте, если хотите игнорировать миграции)
+# */migrations/*.py
+# !*/migrations/__init__.py
+
+# Logs
+logs/
+*.log
+
+# Secrets
+*.pem
+*.key
+*.crt
+secret_key.txt

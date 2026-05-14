@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Мои заявки</h1>
+    <a class="btn btn-primary" href="{% url 'request_create' %}">Новая заявка</a>
+  </div>
+
+  {% if requests %}
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Дата</th>
+            <th>Адрес</th>
+            <th>Статус</th>
+            <th>Группа</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for req in requests %}
+            <tr id="request-row-{{ req.id }}">
+              <td>#{{ req.id }}</td>
+              <td>{{ req.created_at|date:"d.m.Y H:i" }}</td>
+              <td>{{ req.address }}</td>
+              <td><span id="status-{{ req.id }}">{{ req.get_status_display }}</span></td>
+              <td>
+                {% if req.assigned_team %}
+                  {{ req.assigned_team.team_name|default:req.assigned_team.email }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>
+                {% if req.status == 'new' %}
+                  <button
+                    class="btn btn-outline-danger btn-sm"
+                    data-action="cancel"
+                    data-url="{% url 'request_cancel' req.id %}"
+                    data-status-target="status-{{ req.id }}"
+                  >
+                    Отменить
+                  </button>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-info">Заявок пока нет.</div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-action="cancel"]');
+      if (!button) return;
+
+      const url = button.dataset.url;
+      postForm(url, {}).then((response) => response.json()).then((data) => {
+        if (!data.ok) {
+          alert(data.error || 'Ошибка отмены заявки.');
+          return;
+        }
+        const statusEl = document.getElementById(button.dataset.statusTarget);
+        if (statusEl) {
+          statusEl.textContent = data.status_display;
+        }
+        button.disabled = true;
+        button.textContent = 'Отменена';
+      });
+    });
+  </script>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1 class="h4 mb-3">Панель оператора</h1>
+
+  <form class="row g-2 align-items-end mb-4" method="get">
+    <div class="col-auto">
+      <label class="form-label" for="status-filter">Статус</label>
+      <select class="form-select" id="status-filter" name="status">
+        <option value="">Все</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if value == status_filter %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-primary" type="submit">Фильтровать</button>
+    </div>
+  </form>
+
+  <div class="table-responsive mb-4">
+    <table class="table table-striped align-middle">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Клиент</th>
+          <th>Адрес</th>
+          <th>Статус</th>
+          <th>Группа</th>
+          <th>Назначить</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for req in requests %}
+          <tr>
+            <td>#{{ req.id }}</td>
+            <td>{{ req.client.email }}</td>
+            <td>{{ req.address }}</td>
+            <td>{{ req.get_status_display }}</td>
+            <td>
+              {% if req.assigned_team %}
+                {{ req.assigned_team.team_name|default:req.assigned_team.email }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {% if req.status == 'new' %}
+                <form method="post" action="{% url 'operator_assign' %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="request_id" value="{{ req.id }}">
+                  <div class="d-flex gap-2">
+                    <select class="form-select form-select-sm" name="team_id" required>
+                      <option value="" selected>Выберите группу</option>
+                      {% for team in teams %}
+                        <option value="{{ team.id }}" {% if team.id in busy_team_ids %}disabled{% endif %}>
+                          {{ team.team_name|default:team.email }}
+                          {% if team.id in busy_team_ids %}(занята){% endif %}
+                        </option>
+                      {% endfor %}
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary" type="submit">Назначить</button>
+                  </div>
+                </form>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="6">Заявок нет.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="h5">Группы реагирования</h2>
+  <div class="table-responsive">
+    <table class="table table-bordered align-middle">
+      <thead>
+        <tr>
+          <th>Группа</th>
+          <th>Статус</th>
+          <th>Активная заявка</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in team_activity %}
+          <tr>
+            <td>{{ item.team.team_name|default:item.team.email }}</td>
+            <td>
+              {% if item.active_request %}
+                <span class="badge text-bg-warning">Занята</span>
+              {% else %}
+                <span class="badge text-bg-success">Свободна</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.active_request %}
+                #{{ item.active_request.id }} ({{ item.active_request.get_status_display }})
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="3">Групп нет.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}
