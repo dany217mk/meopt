@@ -1,0 +1,790 @@
+openapi: 3.0.0
+info:
+  title: Sangel API
+  description: API агрегатора групп быстрого реагирования ЧОП
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000/api
+    description: Development
+  - url: https://api.sangel.app
+    description: Production
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        clientId:
+          type: string
+          format: uuid
+        description:
+          type: string
+          maxLength: 500
+        location:
+          type: object
+          properties:
+            latitude:
+              type: number
+            longitude:
+              type: number
+            address:
+              type: string
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        status:
+          type: string
+          enum: [NEW, ASSIGNED, IN_PROGRESS, COMPLETED, CANCELLED]
+        assignedTeamId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        estimatedArrivalTime:
+          type: integer
+          description: Приблизительное время прибытия в секундах
+          nullable: true
+
+    RapidTeam:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        chopId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [IDLE, BUSY, OFFLINE]
+        location:
+          type: object
+          properties:
+            latitude:
+              type: number
+            longitude:
+              type: number
+        currentTicketId:
+          type: string
+          format: uuid
+          nullable: true
+        contacts:
+          type: object
+          properties:
+            phone:
+              type: string
+            email:
+              type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          type: string
+          enum: [CLIENT, RAPID_TEAM, OPERATOR]
+        phone:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+  responses:
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      summary: Регистрация нового пользователя
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name, role, phone]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                name:
+                  type: string
+                role:
+                  type: string
+                  enum: [CLIENT, RAPID_TEAM, OPERATOR]
+                phone:
+                  type: string
+      responses:
+        '201':
+          description: Пользователь создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  email:
+                    type: string
+                  token:
+                    type: string
+        '400':
+          description: Ошибка валидации
+        '409':
+          description: Email уже зарегистрирован
+
+  /auth/login:
+    post:
+      summary: Вход в систему
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Неверные креденшалы
+
+  /auth/profile:
+    get:
+      summary: Получить профиль текущего пользователя
+      tags:
+        - Authentication
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tickets:
+    post:
+      summary: Создать новую заявку
+      tags:
+        - Tickets
+      description: |
+        Может создавать CLIENT (свою) или OPERATOR (от имени любого клиента)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [description, location, priority]
+              properties:
+                description:
+                  type: string
+                  maxLength: 500
+                location:
+                  type: object
+                  required: [latitude, longitude, address]
+                  properties:
+                    latitude:
+                      type: number
+                    longitude:
+                      type: number
+                    address:
+                      type: string
+                priority:
+                  type: string
+                  enum: [LOW, MEDIUM, HIGH]
+                clientId:
+                  type: string
+                  format: uuid
+                  description: Обязателен для OPERATOR
+      responses:
+        '201':
+          description: Заявка создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          description: Ошибка валидации
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    get:
+      summary: Получить список заявок
+      tags:
+        - Tickets
+      description: |
+        CLIENT видит только свои заявки
+        OPERATOR видит все заявки
+        RAPID_TEAM видит только назначенные ему
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [NEW, ASSIGNED, IN_PROGRESS, COMPLETED, CANCELLED]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Список заявок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ticket'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tickets/{ticketId}:
+    get:
+      summary: Получить заявку по ID
+      tags:
+        - Tickets
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Заявка найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tickets/{ticketId}/status:
+    put:
+      summary: Обновить статус заявки
+      tags:
+        - Tickets
+      description: |
+        Может обновлять RAPID_TEAM (свои) или OPERATOR (любые)
+        Доступные переходы:
+        - NEW → ASSIGNED (автоматически)
+        - ASSIGNED → IN_PROGRESS
+        - IN_PROGRESS → COMPLETED
+        - Любой → CANCELLED
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [IN_PROGRESS, COMPLETED, CANCELLED]
+                notes:
+                  type: string
+                  description: Комментарий при завершении/отмене
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          description: Неверный переход статуса
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tickets/{ticketId}/cancel:
+    post:
+      summary: Отменить заявку
+      tags:
+        - Tickets
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Причина отмены
+      responses:
+        '200':
+          description: Заявка отменена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tickets/{ticketId}/history:
+    get:
+      summary: Получить историю изменений заявки
+      tags:
+        - Tickets
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: История заявки
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    timestamp:
+                      type: string
+                      format: date-time
+                    event:
+                      type: string
+                    oldStatus:
+                      type: string
+                    newStatus:
+                      type: string
+                    changedBy:
+                      type: string
+                      format: uuid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /teams:
+    get:
+      summary: Получить список групп быстрого реагирования
+      tags:
+        - Teams
+      description: |
+        OPERATOR видит все группы
+        RAPID_TEAM видит только свою информацию
+        CLIENT видит доступные группы (с фильтром по статусу)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [IDLE, BUSY, OFFLINE]
+        - name: chopId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Фильтр по ЧОП (только для OPERATOR)
+      responses:
+        '200':
+          description: Список групп
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RapidTeam'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /teams/{teamId}:
+    get:
+      summary: Получить информацию о группе
+      tags:
+        - Teams
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Информация о группе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RapidTeam'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /teams/{teamId}/status:
+    put:
+      summary: Обновить статус группы
+      tags:
+        - Teams
+      description: |
+        Может обновлять RAPID_TEAM (свой) или OPERATOR (любой)
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [IDLE, BUSY, OFFLINE]
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RapidTeam'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /teams/{teamId}/location:
+    put:
+      summary: Обновить местоположение группы
+      tags:
+        - Teams
+      description: Отправляется периодически мобильным приложением группы
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [latitude, longitude]
+              properties:
+                latitude:
+                  type: number
+                longitude:
+                  type: number
+      responses:
+        '200':
+          description: Местоположение обновлено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /teams/{teamId}/active-ticket:
+    get:
+      summary: Получить активную заявку группы
+      tags:
+        - Teams
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Активная заявка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '204':
+          description: Нет активной заявки
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chops:
+    get:
+      summary: Получить список ЧОП (только для OPERATOR)
+      tags:
+        - ChOP Management
+      responses:
+        '200':
+          description: Список ЧОП
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                    name:
+                      type: string
+                    address:
+                      type: string
+                    phone:
+                      type: string
+                    teamsCount:
+                      type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: Добавить новое ЧОП (только для OPERATOR)
+      tags:
+        - ChOP Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, address, phone, apiKey]
+              properties:
+                name:
+                  type: string
+                address:
+                  type: string
+                phone:
+                  type: string
+                apiKey:
+                  type: string
+      responses:
+        '201':
+          description: ЧОП создано
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /statistics/tickets:
+    get:
+      summary: Статистика по заявкам
+      tags:
+        - Statistics
+      description: Только для OPERATOR
+      parameters:
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Статистика
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  completed:
+                    type: integer
+                  cancelled:
+                    type: integer
+                  avgResponseTime:
+                    type: number
+                    description: Среднее время ответа в секундах
+                  avgCompletionTime:
+                    type: number
+                    description: Среднее время выполнения в секундах
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /statistics/teams:
+    get:
+      summary: Статистика по группам
+      tags:
+        - Statistics
+      description: Только для OPERATOR
+      parameters:
+        - name: chopId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Статистика групп
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    teamId:
+                      type: string
+                      format: uuid
+                    teamName:
+                      type: string
+                    ticketsCompleted:
+                      type: integer
+                    avgCompletionTime:
+                      type: number
+                    utilizationRate:
+                      type: number
+                      description: Процент времени когда группа была занята
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
